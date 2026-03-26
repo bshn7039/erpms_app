@@ -1,0 +1,4 @@
+Flutter SDK	The engine that runs the code.
+Dart SDK	Included automatically with Flutter.
+Android Studio	The IDE (with Flutter/Dart plugins installed).
+Java (JDK)	Required for Android builds.

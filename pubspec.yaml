@@ -1,0 +1,50 @@
+name: erpms_app
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.16.0
+  cloud_firestore: ^4.14.0
+  animated_text_kit: ^4.2.2
+  image_picker: ^1.0.4
+  flutter_image_compress: ^2.1.0
+  google_generative_ai: 0.4.7
+  flutter_dotenv: ^5.1.0
+  sqflite: ^2.3.3+1
+  path: ^1.9.0
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+  firebase_messaging: ^14.9.2
+  google_maps_flutter: ^2.5.3
+  url_launcher: ^6.2.5
+  dropdown_search: ^6.0.2
+  intl: ^0.19.0
+  flutter_markdown: ^0.7.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.0
+
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/images/logo.png"
+  adaptive_icon_background: "#FFFFFF"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - .env
