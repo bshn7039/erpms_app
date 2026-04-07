@@ -2,3 +2,4 @@ Flutter SDK	The engine that runs the code.
 Dart SDK	Included automatically with Flutter.
 Android Studio	The IDE (with Flutter/Dart plugins installed).
 Java (JDK)	Required for Android builds.
+Gemini Api key Google ai studio Api key paste it in env file only then ai function in app will work
