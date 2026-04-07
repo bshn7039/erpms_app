@@ -51,14 +51,18 @@ class _AdminIncidentsPageState extends State<AdminIncidentsPage> {
 
                 // Convert docs to models and filter by city in memory for flexible search
                 final allAlerts = snapshot.data!.docs.map((doc) => AlertModel.fromDoc(doc)).toList();
+                
+                // Extra safety: Filter out any 'resolved' status alerts that might have slipped through
+                final activeAlerts = allAlerts.where((a) => a.status != 'resolved').toList();
+
                 final filteredAlerts = _searchCity.isEmpty
-                    ? allAlerts
-                    : allAlerts.where((alert) => 
+                    ? activeAlerts
+                    : activeAlerts.where((alert) => 
                         alert.district.toLowerCase().contains(_searchCity.toLowerCase())
                       ).toList();
 
                 if (filteredAlerts.isEmpty) {
-                  return const Center(child: Text('No matching incidents found in this city.'));
+                  return const Center(child: Text('No matching incidents found.'));
                 }
 
                 return ListView.builder(
@@ -77,7 +81,8 @@ class _AdminIncidentsPageState extends State<AdminIncidentsPage> {
   }
 
   Stream<QuerySnapshot> _getStream() {
-    // Show both active and engaged incidents
+    // Show both active and engaged incidents only. 
+    // This query explicitly excludes 'resolved' status.
     return FirebaseFirestore.instance
         .collection('alerts')
         .where('status', whereIn: ['active', 'engaged'])
@@ -250,9 +255,10 @@ class _IncidentCard extends StatelessWidget {
     if (confirm != true) return;
 
     try {
-      await FirebaseFirestore.instance.collection('alerts').doc(id).update({
-        'status': 'resolved',
-      });
+      // Resolve both Alert and Incident (they share ID)
+      await FirebaseFirestore.instance.collection('alerts').doc(id).update({'status': 'resolved'});
+      await FirebaseFirestore.instance.collection('incidents').doc(id).update({'status': 'resolved'}).catchError((_) => null);
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incident marked as Resolved')));
       }

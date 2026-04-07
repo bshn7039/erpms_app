@@ -66,19 +66,43 @@ class _AlertDetailPageState extends State<AlertDetailPage> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      // Update the alert
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final userData = userDoc.data();
+      final responderName = userData?['full_name'] ?? 'Volunteer';
+
+      // 1. Update the alert
       await FirebaseFirestore.instance.collection('alerts').doc(_currentAlert.id).update({
         'status': 'engaged',
         'engagedBy': user.uid,
       });
 
-      // Update the corresponding incident if it exists
+      // 2. Ensure corresponding incident exists and update it
       final incidentId = _currentAlert.id; 
-      await FirebaseFirestore.instance.collection('incidents').doc(incidentId).update({
-        'status': 'engaged',
-        'engagedBy': user.uid,
-        'responderName': (await FirebaseFirestore.instance.collection('users').doc(user.uid).get()).data()?['full_name'] ?? 'Volunteer',
-      });
+      final incidentRef = FirebaseFirestore.instance.collection('incidents').doc(incidentId);
+      final incidentDoc = await incidentRef.get();
+
+      if (!incidentDoc.exists) {
+        // If for some reason the incident record is missing, reconstruct it from alert data
+        await incidentRef.set({
+          'userId': _currentAlert.createdBy,
+          'status': 'engaged',
+          'type': _currentAlert.type,
+          'timestamp': _currentAlert.timestamp,
+          'location': _currentAlert.location,
+          'district': _currentAlert.district,
+          'visibility': _currentAlert.visibility,
+          'isSOS': _currentAlert.isSOS,
+          'engagedBy': user.uid,
+          'responderName': responderName,
+          'description': _currentAlert.description,
+        });
+      } else {
+        await incidentRef.update({
+          'status': 'engaged',
+          'engagedBy': user.uid,
+          'responderName': responderName,
+        });
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -334,25 +358,6 @@ class _AlertDetailPageState extends State<AlertDetailPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 onPressed: _engageAlert,
-              ),
-            ),
-          
-          if (_currentAlert.engagedBy == user?.uid)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.chat_bubble_outline),
-                  label: const Text('OPEN ASSISTANCE HUB', style: TextStyle(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade700,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ActiveAssistancePage(incidentId: _currentAlert.id))),
-                ),
               ),
             ),
           

@@ -23,6 +23,7 @@ class _SosPageState extends State<SosPage> {
   bool _isLocating = true;
   String? _incidentId;
   String? _emergencyContactPhone;
+  String? _emergencyContactUid;
   bool _isVerified = false;
   bool _isPublicized = false;
   bool _isPublicizing = false;
@@ -96,6 +97,17 @@ class _SosPageState extends State<SosPage> {
       return;
     }
 
+    // Try to find the UID of the emergency contact based on their phone number
+    if (_emergencyContactPhone != null && _emergencyContactPhone!.isNotEmpty) {
+      final contactSearch = await _firestore.collection('users')
+          .where('phone', isEqualTo: _emergencyContactPhone)
+          .limit(1)
+          .get();
+      if (contactSearch.docs.isNotEmpty) {
+        _emergencyContactUid = contactSearch.docs.first.id;
+      }
+    }
+
     // Check for existing active SOS incident
     final existingIncident = await _firestore.collection('incidents')
         .where('userId', isEqualTo: user.uid)
@@ -134,6 +146,7 @@ class _SosPageState extends State<SosPage> {
       'type': 'Pending Selection',
       'timestamp': FieldValue.serverTimestamp(),
       'emergency_contact': _emergencyContactPhone,
+      'emergency_contact_uid': _emergencyContactUid, // This ensures it shows in their hub
       'location': null,
       'district': 'Locating...',
       'visibility': 'personal',
@@ -155,6 +168,7 @@ class _SosPageState extends State<SosPage> {
       'isSOS': true,
       'type': 'General',
       'createdBy': user.uid,
+      'emergency_contact_uid': _emergencyContactUid,
       'timestamp': FieldValue.serverTimestamp(),
       'description': 'Emergency SOS triggered. User needs immediate assistance.',
       'incidentId': _incidentId,

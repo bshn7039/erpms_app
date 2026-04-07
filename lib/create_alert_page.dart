@@ -66,22 +66,54 @@ class _CreateAlertPageState extends State<CreateAlertPage> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      final alert = AlertModel(
-        id: '', // Firestore will generate
-        title: _titleController.text.trim(),
-        description: _descController.text.trim(),
-        district: _city,
-        location: _currentLocation!,
-        isOfficial: widget.isAdminOrVolunteer,
-        severity: _selectedSeverity,
-        status: 'active',
-        visibility: _visibility,
-        type: _selectedType,
-        createdBy: user.uid,
-        timestamp: Timestamp.now(),
-      );
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final userData = userDoc.data();
+      final userName = userData?['full_name'] ?? 'Unknown User';
+      final userPhone = userData?['phone'] ?? '';
 
-      await FirebaseFirestore.instance.collection('alerts').add(alert.toMap());
+      final alertRef = FirebaseFirestore.instance.collection('alerts').doc();
+      final alertId = alertRef.id;
+
+      final alertMap = {
+        'title': _titleController.text.trim(),
+        'description': _descController.text.trim(),
+        'district': _city,
+        'location': _currentLocation!,
+        'isOfficial': widget.isAdminOrVolunteer,
+        'severity': _selectedSeverity,
+        'status': 'active',
+        'visibility': _visibility,
+        'type': _selectedType,
+        'createdBy': user.uid,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isSOS': false,
+      };
+
+      // 1. Create the Alert
+      await alertRef.set(alertMap);
+
+      // 2. Create corresponding Incident for Assistant Hub tracking
+      await FirebaseFirestore.instance.collection('incidents').doc(alertId).set({
+        'userId': user.uid,
+        'userName': userName,
+        'userPhone': userPhone,
+        'status': 'active',
+        'type': _selectedType,
+        'timestamp': FieldValue.serverTimestamp(),
+        'location': _currentLocation!,
+        'district': _city,
+        'visibility': _visibility,
+        'isPublicized': _visibility == 'public',
+        'isSOS': false,
+        'description': _descController.text.trim(),
+      });
+
+      // 3. System message
+      await FirebaseFirestore.instance.collection('incidents').doc(alertId).collection('messages').add({
+        'senderId': 'system',
+        'text': 'Alert created. Responders will see this in their feeds.',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
 
       if (mounted) {
         Navigator.pop(context);

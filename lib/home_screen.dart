@@ -83,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _primaryBlue.withOpacity(0.5), width: 1),
                 image: const DecorationImage(
-                  image: AssetImage('assets/images/mappreview.png'),
+                  image: AssetImage('assets/images/mapbg.jpg'),
                   fit: BoxFit.cover,
                   opacity: 0.6,
                 ),

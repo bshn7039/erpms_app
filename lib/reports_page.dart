@@ -57,7 +57,7 @@ class _ReportsPageState extends State<ReportsPage> {
   @override
   Widget build(BuildContext context) {
     return AppShell(
-      title: 'Public Reports',
+      title: 'Gov Alerts',
       isBodyScrollable: false,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
