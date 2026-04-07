@@ -54,6 +54,7 @@ class AssistantHubPage extends StatelessWidget {
                 final allIncidents = snapshot.data!.docs;
                 final myIncidents = allIncidents.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
+                  // Show incidents where I am the victim, responder, or emergency contact
                   return data['userId'] == user.uid || 
                          data['engagedBy'] == user.uid || 
                          data['emergency_contact_uid'] == user.uid;
@@ -108,7 +109,19 @@ class AssistantHubPage extends StatelessWidget {
     final isResolved = status == 'resolved';
     
     final isVictim = data['userId'] == currentUid;
-    final otherPartyName = isVictim ? (data['responderName'] ?? 'Searching for Help...') : (data['userName'] ?? 'User');
+    final isEngaged = data['engagedBy'] != null;
+    
+    // Determine title and subtitle based on user's role
+    String title = '';
+    String subtitleText = '';
+    
+    if (isVictim) {
+      title = 'My Emergency: $type';
+      subtitleText = isEngaged ? 'Responder: ${data['responderName'] ?? 'Assigned'}' : 'Searching for help...';
+    } else {
+      title = 'Helping: ${data['userName'] ?? 'User'}';
+      subtitleText = 'Incident type: $type';
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -124,7 +137,7 @@ class AssistantHubPage extends StatelessWidget {
           child: Icon(isVictim ? Icons.emergency : Icons.volunteer_activism, color: Colors.white),
         ),
         title: Text(
-          isVictim ? 'My Emergency: $type' : 'Help Request from $otherPartyName',
+          title,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
         ),
         subtitle: Padding(
@@ -132,7 +145,7 @@ class AssistantHubPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Contact: $otherPartyName', style: const TextStyle(fontSize: 13)),
+              Text(subtitleText, style: const TextStyle(fontSize: 13)),
               const SizedBox(height: 4),
               Text(
                 '${timestamp.day}/${timestamp.month}/${timestamp.year} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}',
@@ -166,7 +179,7 @@ class AssistantHubPage extends StatelessWidget {
                 const Icon(Icons.chevron_right, size: 20),
               ],
             ),
-            if (isVictim)
+            if (isVictim && isResolved)
               IconButton(
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 onPressed: () => _confirmDeletion(context, docId),
@@ -188,13 +201,13 @@ class AssistantHubPage extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Session?'),
-        content: const Text('This will permanently delete this assistance session and the connected alert record.'),
+        content: const Text('This will permanently delete this assistance session record.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _deleteIncidentAndAlert(docId);
+              await _deleteIncident(docId);
             },
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
@@ -203,11 +216,7 @@ class AssistantHubPage extends StatelessWidget {
     );
   }
 
-  Future<void> _deleteIncidentAndAlert(String docId) async {
-    final firestore = FirebaseFirestore.instance;
-    // 1. Delete Incident
-    await firestore.collection('incidents').doc(docId).delete();
-    // 2. Delete Alert (assuming alertId == docId as per my previous SOS implementation)
-    await firestore.collection('alerts').doc(docId).delete();
+  Future<void> _deleteIncident(String docId) async {
+    await FirebaseFirestore.instance.collection('incidents').doc(docId).delete();
   }
 }

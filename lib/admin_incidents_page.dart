@@ -46,15 +46,26 @@ class _AdminIncidentsPageState extends State<AdminIncidentsPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('No active incidents found.'));
+                  return const Center(child: Text('No active or engaged incidents found.'));
+                }
+
+                // Convert docs to models and filter by city in memory for flexible search
+                final allAlerts = snapshot.data!.docs.map((doc) => AlertModel.fromDoc(doc)).toList();
+                final filteredAlerts = _searchCity.isEmpty
+                    ? allAlerts
+                    : allAlerts.where((alert) => 
+                        alert.district.toLowerCase().contains(_searchCity.toLowerCase())
+                      ).toList();
+
+                if (filteredAlerts.isEmpty) {
+                  return const Center(child: Text('No matching incidents found in this city.'));
                 }
 
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: snapshot.data!.docs.length,
+                  itemCount: filteredAlerts.length,
                   itemBuilder: (context, index) {
-                    final alert = AlertModel.fromDoc(snapshot.data!.docs[index]);
-                    return _IncidentCard(alert: alert);
+                    return _IncidentCard(alert: filteredAlerts[index]);
                   },
                 );
               },
@@ -66,15 +77,12 @@ class _AdminIncidentsPageState extends State<AdminIncidentsPage> {
   }
 
   Stream<QuerySnapshot> _getStream() {
-    Query query = FirebaseFirestore.instance
+    // Show both active and engaged incidents
+    return FirebaseFirestore.instance
         .collection('alerts')
-        .where('status', isEqualTo: 'active');
-    
-    if (_searchCity.isNotEmpty) {
-      query = query.where('district', isEqualTo: _searchCity);
-    }
-    
-    return query.orderBy('timestamp', descending: true).snapshots();
+        .where('status', whereIn: ['active', 'engaged'])
+        .orderBy('timestamp', descending: true)
+        .snapshots();
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -120,7 +128,7 @@ class _AdminIncidentsPageState extends State<AdminIncidentsPage> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
           contentPadding: const EdgeInsets.symmetric(vertical: 0),
         ),
-        onSubmitted: (val) {
+        onChanged: (val) {
           setState(() => _searchCity = val.trim());
         },
       ),
@@ -136,6 +144,7 @@ class _IncidentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -148,40 +157,65 @@ class _IncidentCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     alert.title,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _navyTitle),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                _buildSeverityBadge(alert.severity),
+                Row(
+                  children: [
+                    _buildStatusBadge(alert.status),
+                    const SizedBox(width: 4),
+                    _buildSeverityBadge(alert.severity),
+                  ],
+                ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Row(
               children: [
                 const Icon(Icons.location_on, size: 14, color: Colors.grey),
                 const SizedBox(width: 4),
-                Text(alert.district, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                Text(alert.district, style: const TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w500)),
               ],
             ),
-            const SizedBox(height: 12),
-            if (alert.description != null)
-              Text(alert.description!, style: const TextStyle(fontSize: 13, color: _textDark)),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => _resolveIncident(context, alert.id),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text('Resolve Incident'),
+            if (alert.description != null && alert.description!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                alert.description!, 
+                style: const TextStyle(fontSize: 13, color: _textDark),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _resolveIncident(context, alert.id),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Resolve Incident', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    Color color = status.toLowerCase() == 'engaged' ? Colors.orange : Colors.red;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+      child: Text(status.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
     );
   }
 
@@ -190,6 +224,7 @@ class _IncidentCard extends StatelessWidget {
     switch (severity.toLowerCase()) {
       case 'critical': color = Colors.red; break;
       case 'warning': color = Colors.orange; break;
+      case 'high': color = Colors.redAccent; break;
       default: color = Colors.blue;
     }
     return Container(
@@ -200,13 +235,31 @@ class _IncidentCard extends StatelessWidget {
   }
 
   Future<void> _resolveIncident(BuildContext context, String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Resolve Incident?'),
+        content: const Text('This will mark the incident as completed and remove it from the active list.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirm', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
     try {
       await FirebaseFirestore.instance.collection('alerts').doc(id).update({
         'status': 'resolved',
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incident Resolved')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incident marked as Resolved')));
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error resolving incident: $e')));
+      }
     }
   }
 }

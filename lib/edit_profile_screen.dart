@@ -19,12 +19,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _fullNameController = TextEditingController();
   final _allergiesController = TextEditingController();
   final _emergencyContactPhoneController = TextEditingController();
-  String? _bloodGroup;
+  
+  // Hardcoded list must include exactly what we use as a default or from DB
+  final List<String> _bloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-', 'Not Set'];
+  
+  String _bloodGroup = 'Not Set'; // Default to one of the items in the list
   String? _profileData;
   bool _isLoading = false;
+  bool _isDataLoaded = false;
   bool _shareLocationDuringSOS = true;
-
-  final List<String> _bloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
   @override
   void initState() {
@@ -34,35 +37,55 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _loadUserData() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
+    if (user == null) return;
+
+    try {
       final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      final data = doc.data();
-      if (data != null) {
+      if (doc.exists) {
+        final data = doc.data()!;
         _fullNameController.text = data['full_name'] ?? '';
         _allergiesController.text = data['allergies'] ?? '';
         _emergencyContactPhoneController.text = data['emergency_contact_phone'] ?? '';
+        
         setState(() {
-          _bloodGroup = data['blood_group'];
+          String? bg = data['blood_group'];
+          // Ensure the value from DB exists in our list to avoid the red screen error
+          if (bg != null && _bloodGroups.contains(bg)) {
+            _bloodGroup = bg;
+          } else {
+            _bloodGroup = 'Not Set';
+          }
+          
           _profileData = data['profile_data'];
           _shareLocationDuringSOS = data['share_location_sos'] ?? true;
+          _isDataLoaded = true;
         });
+      } else {
+        setState(() => _isDataLoaded = true);
       }
+    } catch (e) {
+      debugPrint("Error loading profile: $e");
+      setState(() => _isDataLoaded = true);
     }
   }
 
   Future<void> _pickAndCompressImage() async {
     final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
-      final result = await FlutterImageCompress.compressWithFile(
-        pickedFile.path,
-        minWidth: 200,
-        minHeight: 200,
-        quality: 70,
-      );
-      if (result != null) {
-        setState(() {
-          _profileData = base64Encode(result);
-        });
+      try {
+        final result = await FlutterImageCompress.compressWithFile(
+          pickedFile.path,
+          minWidth: 250,
+          minHeight: 250,
+          quality: 80,
+        );
+        if (result != null) {
+          setState(() {
+            _profileData = base64Encode(result);
+          });
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error processing image: $e')));
       }
     }
   }
@@ -75,9 +98,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         final user = FirebaseAuth.instance.currentUser;
         if (user != null) {
           final userData = {
-            'full_name': _fullNameController.text,
-            'allergies': _allergiesController.text,
-            'emergency_contact_phone': _emergencyContactPhoneController.text,
+            'full_name': _fullNameController.text.trim(),
+            'allergies': _allergiesController.text.trim(),
+            'emergency_contact_phone': _emergencyContactPhoneController.text.trim(),
             'blood_group': _bloodGroup,
             'profile_data': _profileData,
             'share_location_sos': _shareLocationDuringSOS,
@@ -86,24 +109,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           await FirebaseFirestore.instance.collection('users').doc(user.uid).set(userData, SetOptions(merge: true));
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile Saved Successfully')));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile Updated Successfully')));
+            Navigator.pop(context);
           }
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save profile: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
         }
       } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          Navigator.pop(context);
-        }
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isDataLoaded) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Edit Profile'), backgroundColor: _primaryBlue, foregroundColor: Colors.white),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Profile'),
@@ -113,59 +141,102 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20.0),
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Center(
-                    child: GestureDetector(
-                      onTap: _pickAndCompressImage,
-                      child: CircleAvatar(
-                        radius: 50,
-                        backgroundImage: _profileData != null ? MemoryImage(base64Decode(_profileData!)) : const AssetImage('assets/images/profile.png') as ImageProvider,
-                        child: const Icon(Icons.camera_alt, color: Colors.white70),
-                      ),
+                    child: Stack(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: _primaryBlue.withOpacity(0.2), width: 4),
+                          ),
+                          child: CircleAvatar(
+                            radius: 60,
+                            backgroundColor: Colors.grey.shade200,
+                            backgroundImage: _profileData != null 
+                                ? MemoryImage(base64Decode(_profileData!)) 
+                                : const AssetImage('assets/images/profile.png') as ImageProvider,
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: _pickAndCompressImage,
+                            child: Container(
+                              height: 36,
+                              width: 36,
+                              decoration: const BoxDecoration(
+                                color: _primaryBlue,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 32),
                   const Text('Personal Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _primaryBlue)),
-                  const SizedBox(height: 12),
+                  const Divider(),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _fullNameController,
-                    decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder()),
-                    validator: (value) => value!.isEmpty ? 'Please enter your full name' : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Full Name',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                    validator: (value) => (value == null || value.isEmpty) ? 'Please enter your full name' : null,
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _bloodGroup,
-                    decoration: const InputDecoration(labelText: 'Blood Group', border: OutlineInputBorder()),
-                    items: _bloodGroups.map((String value) {
+                    decoration: const InputDecoration(
+                      labelText: 'Blood Group',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.bloodtype_outlined),
+                    ),
+                    items: _bloodGroups.map((String group) {
                       return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
+                        value: group,
+                        child: Text(group),
                       );
                     }).toList(),
-                    onChanged: (newValue) => setState(() => _bloodGroup = newValue),
+                    onChanged: (newValue) {
+                      if (newValue != null) {
+                        setState(() => _bloodGroup = newValue);
+                      }
+                    },
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _allergiesController,
-                    decoration: const InputDecoration(labelText: 'Allergies', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                      labelText: 'Allergies',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.warning_amber_outlined),
+                    ),
                     maxLines: 2,
                   ),
                   const SizedBox(height: 24),
                   const Text('Safety & Privacy', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                  const Divider(),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _emergencyContactPhoneController,
                     keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(
-                      labelText: 'Emergency Contact Phone (10 digits)',
-                      hintText: 'Required for SOS alerts',
+                      labelText: 'Emergency Contact Phone',
+                      hintText: '10-digit mobile number',
                       border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.emergency),
+                      prefixIcon: Icon(Icons.emergency_outlined),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) return 'Emergency contact is required';
@@ -173,37 +244,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   SwitchListTile(
                     title: const Text('Share Live Location during SOS'),
-                    subtitle: const Text('Your location is ONLY shared when SOS is active or an incident is engaged.', style: TextStyle(fontSize: 12)),
+                    subtitle: const Text('Your location is only shared with responders during active emergencies.'),
                     value: _shareLocationDuringSOS,
                     onChanged: (val) => setState(() => _shareLocationDuringSOS = val),
                     activeColor: Colors.redAccent,
                     contentPadding: EdgeInsets.zero,
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 40),
                   ElevatedButton(
-                    onPressed: _saveProfile,
+                    onPressed: _isLoading ? null : _saveProfile,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _primaryBlue,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
                     ),
-                    child: const Text('Save Profile', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: _isLoading 
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Save Profile Changes', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
                 ],
               ),
             ),
           ),
           if (_isLoading)
             Container(
-              color: Colors.black.withOpacity(0.5),
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              color: Colors.black26,
+              child: const Center(child: CircularProgressIndicator()),
             ),
         ],
       ),

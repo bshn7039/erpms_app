@@ -246,12 +246,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Stack(
                   children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundImage: profileData != null ? MemoryImage(base64Decode(profileData)) : const AssetImage('assets/images/profile.png') as ImageProvider,
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _primaryBlue.withOpacity(0.1), width: 3),
+                      ),
+                      child: CircleAvatar(
+                        radius: 55,
+                        backgroundColor: Colors.grey.shade200,
+                        backgroundImage: profileData != null 
+                            ? MemoryImage(base64Decode(profileData)) 
+                            : const AssetImage('assets/images/profile.png') as ImageProvider,
+                      ),
                     ),
                     if (isVerifiedVolunteer)
-                      Positioned(bottom: 0, right: 0, child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Icon(Icons.verified, color: Colors.blue, size: 24))),
+                      Positioned(
+                        bottom: 0, 
+                        right: 0, 
+                        child: Container(
+                          padding: const EdgeInsets.all(4), 
+                          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), 
+                          child: const Icon(Icons.verified, color: Colors.blue, size: 24)
+                        ),
+                      ),
+                    Positioned(
+                      bottom: 5,
+                      right: isVerifiedVolunteer ? 28 : 5,
+                      child: GestureDetector(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const EditProfileScreen())),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            color: _primaryBlue,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
